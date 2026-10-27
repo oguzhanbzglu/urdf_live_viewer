@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URDF Live Viewer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #eef2f0; --panel: #ffffff; --fg: #18201e; --muted: #5a6964; --line: #d3dbd8;
+  --accent: #0e7566; --accent-soft: #d6ece7; --warn: #b45309; --bad: #c2412d;
+  --view-bg: #e4eae7; --grid: #b9c4c0; --moving: #d3d8d6; --static: #8f9a97;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111615; --panel: #182120; --fg: #e1e9e6; --muted: #8d9f99; --line: #2b3734;
+    --accent: #3ec1aa; --accent-soft: #19332e; --warn: #f0a04b; --bad: #f0705c;
+    --view-bg: #151c1b; --grid: #33413d; --moving: #a9b2af; --static: #6d7775;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font-body); padding: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-bottom: 12px; }
+h1 { font: 600 22px var(--font-display); margin: 0; }
+.source { font: 12px var(--font-mono); color: var(--muted); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.status { font: 12px var(--font-mono); display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); transition: box-shadow .3s; }
+.status.flash .dot { box-shadow: 0 0 0 5px var(--accent-soft); }
+.status.error .dot { background: var(--bad); }
+.banner { background: var(--panel); border: 1px solid var(--bad); border-left: 4px solid var(--bad); padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; font: 12px var(--font-mono); white-space: pre-wrap; }
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.viewport { position: relative; height: calc(100vh - 110px); min-height: 420px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--view-bg); }
+.viewport canvas { display: block; width: 100%; height: 100%; }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.tag { position: absolute; transform: translate(-50%, -130%); font: 11px var(--font-mono); padding: 1px 6px; border-radius: 3px; background: var(--panel); border: 1px solid var(--line); white-space: nowrap; }
+.toolbar { position: absolute; left: 10px; top: 10px; right: 10px; display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; }
+.chip, .tool-btn { pointer-events: auto; font: 500 12px var(--font-display); letter-spacing: .03em; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.chip input { margin: 0; accent-color: var(--accent); }
+.tool-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pick { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 4px; padding: 6px 10px; font: 12px var(--font-mono); }
+.hint { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: var(--muted); background: var(--panel); padding: 2px 8px; border-radius: 3px; border: 1px solid var(--line); }
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; font: 600 13px var(--font-display); letter-spacing: .06em; text-transform: uppercase; padding: 10px 6px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.pane { padding: 14px; display: grid; gap: 14px; max-height: calc(100vh - 160px); overflow-y: auto; }
+.label { font: 600 11px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets button { font: 12px var(--font-body); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+.presets button:hover { border-color: var(--accent); color: var(--accent); }
+.slider { display: grid; grid-template-columns: minmax(70px, 120px) minmax(0, 1fr) 70px; align-items: center; gap: 8px; }
+.slider label { font: 12px var(--font-mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slider input { width: 100%; accent-color: var(--accent); }
+.slider output { font: 12px var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.readout { font: 12px var(--font-mono); display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-variant-numeric: tabular-nums; }
+.readout dt { color: var(--muted); }
+.readout dd { margin: 0; text-align: right; }
+select, .search { width: 100%; font: 12px var(--font-mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
+.clear { display: grid; gap: 2px; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.clear div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 3px 6px; border-radius: 3px; cursor: pointer; }
+.clear div:hover { background: var(--accent-soft); }
+.clear span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clear .near { color: var(--warn); }
+.clear .hit { color: var(--bad); font-weight: 500; }
+.clear small { color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th { text-align: left; font: 600 11px var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+td { font-family: var(--font-mono); padding: 5px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td, tr.on td { background: var(--accent-soft); }
+.swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+.tree { font: 12px var(--font-mono); list-style: none; margin: 0; padding: 0; }
+.tree ul { list-style: none; margin: 0; padding-left: 14px; border-left: 1px solid var(--line); }
+.tree .node { display: flex; gap: 6px; padding: 2px 4px; border-radius: 3px; cursor: pointer; }
+.tree .node:hover, .tree .node.on { background: var(--accent-soft); }
+.tree .jt { color: var(--muted); font-size: 11px; }
+.tree .jt.mov { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="robot-name">URDF Live Viewer</h1>
+  <span class="source" id="source"></span>
+  <span class="status" id="status"><span class="dot"></span><span id="status-text">connecting…</span></span>
+</header>
+<div class="banner" id="banner" hidden></div>
+<div class="bench">
+  <section class="viewport" id="viewport">
+    <div class="labels" id="labels"></div>
+    <div class="toolbar">
+      <label class="chip"><input type="checkbox" id="t-moving" checked> Moving</label>
+      <label class="chip"><input type="checkbox" id="t-static" checked> Static</label>
+      <label class="chip"><input type="checkbox" id="t-frames" checked> Frames</label>
+      <label class="chip"><input type="checkbox" id="t-labels" checked> Labels</label>
+      <button class="tool-btn" type="button" id="fit">Fit view</button>
+    </div>
+    <div class="pick" id="pick">Click a part to inspect it</div>
+    <div class="hint">Drag to orbit · right-drag to pan · scroll to zoom</div>
+  </section>
+  <aside>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-pose" aria-selected="true">Pose</button>
+      <button role="tab" id="tab-scene" aria-selected="false">Static</button>
+      <button role="tab" id="tab-links" aria-selected="false">Links</button>
+    </div>
+    <div class="pane" id="pane-pose">
+      <div><p class="label">Poses</p><div class="presets" id="presets"></div></div>
+      <div><p class="label">Joints</p><div id="sliders" style="display:grid;gap:6px"></div></div>
+      <div><p class="label">Clearance at this pose</p><div class="clear" id="clearance"></div>
+        <p class="note" id="clearance-note" style="margin-top:6px">Closest moving part to each static link. Orange under 5 cm, red when touching.</p></div>
+      <div><p class="label">Link pose in the root frame</p><select id="tip" aria-label="Link to read out"></select>
+        <dl class="readout" id="tcp" style="margin-top:8px"></dl></div>
+    </div>
+    <div class="pane" id="pane-scene" hidden>
+      <div><p class="label">Static shapes</p><div class="table-wrap"><table id="scene-table"></table></div></div>
+      <div><p class="label">Axis-aligned extents</p><div class="table-wrap"><table id="extent-table"></table></div></div>
+    </div>
+    <div class="pane" id="pane-links" hidden>
+      <input class="search" id="link-search" type="search" placeholder="Filter links">
+      <ul class="tree" id="tree"></ul>
+    </div>
+  </aside>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const fmt = (v, d = 3) => (v >= 0 ? '+' : '') + v.toFixed(d);
+  const M = (a) => new THREE.Matrix4().set(...a);
+
+  let D = null, byParent = {}, jointByChild = {}, roots = [], world = {}, linkObj = {}, pickables = [];
+  let selected = null, moving = new Set(), q = {}, sliderKey = '', fitted = false;
+
+  const host = $('viewport');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  host.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.005, 100);
+  camera.up.set(0, 0, 1); camera.position.set(1.8, -1.5, 1.2);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(1.5, -2, 3); scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.25); fill.position.set(-2, 1.5, 1); scene.add(fill);
+  const modelRoot = new THREE.Group(); scene.add(modelRoot);
+  const frames = new THREE.Group(); scene.add(frames);
+  const rootAxes = new THREE.AxesHelper(0.15); frames.add(rootAxes);
+  const tipAxes = new THREE.AxesHelper(0.07); tipAxes.matrixAutoUpdate = false; frames.add(tipAxes);
+  const pickAxes = new THREE.AxesHelper(0.1); pickAxes.matrixAutoUpdate = false; pickAxes.visible = false; frames.add(pickAxes);
+  let grid = null;
+
+  function decode(b64, Ctor) { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Ctor(u.buffer); }
+  function colorFor(link) {
+    const c = D.colors[link];
+    if (c) return new THREE.Color(c[0], c[1], c[2]);
+    return css(moving.has(link) ? '--moving' : '--static');
+  }
+  function jointValue(j) {
+    if (j.mimic && j.mimic.joint in q) return j.mimic.multiplier * q[j.mimic.joint] + j.mimic.offset;
+    return q[j.name] || 0;
+  }
+  function fk() {
+    world = {};
+    const walk = (link, Mw) => {
+      world[link] = Mw;
+      (byParent[link] || []).forEach(j => {
+        const m = Mw.clone().multiply(j.M); const v = jointValue(j);
+        if (j.type === 'revolute' || j.type === 'continuous') m.multiply(new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(...j.axis).normalize(), v));
+        else if (j.type === 'prismatic') { const a = new THREE.Vector3(...j.axis).normalize(); m.multiply(new THREE.Matrix4().makeTranslation(a.x * v, a.y * v, a.z * v)); }
+        walk(j.child, m);
+      });
+    };
+    roots.forEach(r => walk(r, new THREE.Matrix4()));
+  }
+  function staticShapes() {
+    return D.geoms.filter(g => !moving.has(g.link) && g.kind !== 'mesh').map(g => {
+      const Mw = world[g.link].clone().multiply(M(g.T));
+      const c = new THREE.Vector3().setFromMatrixPosition(Mw);
+      const ext = g.kind === 'box' ? g.size : g.kind === 'sphere' ? [2 * g.radius, 2 * g.radius, 2 * g.radius] : [2 * g.radius, 2 * g.radius, g.length + (g.kind === 'capsule' ? 2 * g.radius : 0)];
+      const box = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3(...ext)).applyMatrix4(Mw);
+      return { g, c, box };
+    });
+  }
+
+  function build(data) {
+    D = data;
+    document.title = `${D.name} · URDF Live Viewer`;
+    $('robot-name').textContent = D.name;
+    $('source').textContent = [D.source, ...D.args].join(' ') + ` · ${D.geometry} geometry`;
+    moving = new Set(D.moving);
+    byParent = {}; jointByChild = {};
+    D.joints.forEach(j => { j.M = M(j.T); (byParent[j.parent] = byParent[j.parent] || []).push(j); jointByChild[j.child] = j; });
+    roots = D.links.filter(l => !jointByChild[l]);
+    modelRoot.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    modelRoot.clear(); linkObj = {}; pickables = [];
+    const meshGeo = {};
+    Object.entries(D.meshes).forEach(([k, m]) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(decode(m.v, Float32Array), 3));
+      g.setIndex(new THREE.BufferAttribute(decode(m.i, Uint32Array), 1));
+      g.computeVertexNormals(); meshGeo[k] = g;
+    });
+    D.links.forEach(l => { const o = new THREE.Group(); o.matrixAutoUpdate = false; linkObj[l] = o; modelRoot.add(o); });
+    D.geoms.forEach(g => {
+      let geo;
+      if (g.kind === 'box') geo = new THREE.BoxGeometry(...g.size);
+      else if (g.kind === 'cylinder') { geo = new THREE.CylinderGeometry(g.radius, g.radius, g.length, 40); geo.rotateX(Math.PI / 2); }
+      else if (g.kind === 'capsule') { geo = THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(g.radius, g.length, 8, 24) : new THREE.CylinderGeometry(g.radius, g.radius, g.length + 2 * g.radius, 24); geo.rotateX(Math.PI / 2); }
+      else if (g.kind === 'sphere') geo = new THREE.SphereGeometry(g.radius, 24, 16);
+      else geo = meshGeo[g.mesh];
+      const rgba = D.colors[g.link]; const alpha = rgba ? rgba[3] : 1;
+      const mat = new THREE.MeshStandardMaterial({ color: colorFor(g.link), roughness: 0.7, metalness: 0.05, flatShading: g.kind === 'mesh', transparent: alpha < 1, opacity: alpha, depthWrite: alpha >= 1, side: alpha < 1 ? THREE.DoubleSide : THREE.FrontSide });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.matrixAutoUpdate = false; mesh.matrix.copy(M(g.T)); mesh.userData.link = g.link;
+      linkObj[g.link].add(mesh); pickables.push(mesh);
+      if (alpha < 1) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: mat.color })); e.matrixAutoUpdate = false; e.matrix.copy(M(g.T)); linkObj[g.link].add(e); }
+    });
+    buildSliders(); buildPresets(); buildTipSelect(); buildTree();
+    applyTheme(); applyToggles(); update(true);
+    if (!fitted) { fitView(); fitted = true; }
+    if (selected && !linkObj[selected]) selected = null;
+    select(selected);
+  }
+
+  function buildSliders() {
+    const movable = D.joints.filter(j => j.type !== 'fixed' && !(j.mimic && D.joints.some(o => o.name === j.mimic.joint)));
+    const key = movable.map(j => `${j.name}:${j.lower}:${j.upper}`).join('|');
+    if (key === sliderKey) return;
+    sliderKey = key;
+    const box = $('sliders'); box.innerHTML = '';
+    if (!movable.length) box.innerHTML = '<p class="note">No movable joints.</p>';
+    movable.forEach(j => {
+      if (!(j.name in q)) q[j.name] = Math.min(Math.max(0, j.lower), j.upper);
+      const unit = j.type === 'prismatic' ? 'm' : '°';
+      const show = (v) => j.type === 'prismatic' ? v.toFixed(3) + ' m' : (v * 180 / Math.PI).toFixed(1) + '°';
+      const row = document.createElement('div'); row.className = 'slider';
+      row.innerHTML = `<label for="s-${j.name}" title="${j.name} (${j.type})">${j.name}</label><input id="s-${j.name}" type="range" min="${j.lower}" max="${j.upper}" step="${unit === 'm' ? 0.0005 : 0.001}" value="${q[j.name]}"><output>${show(q[j.name])}</output>`;
+      const input = row.querySelector('input'), out = row.querySelector('output');
+      input.addEventListener('input', () => { q[j.name] = +input.value; out.textContent = show(q[j.name]); update(); });
+      input.dataset.unit = unit;
+      box.appendChild(row);
+    });
+  }
+  function setPose(values) {
+    Object.entries(values).forEach(([n, v]) => {
+      const s = $('s-' + n); if (!s) return;
+      q[n] = v; s.value = v; s.nextElementSibling.textContent = s.dataset.unit === 'm' ? v.toFixed(3) + ' m' : (v * 180 / Math.PI).toFixed(1) + '°';
+    });
+    update();
+  }
+  function buildPresets() {
+    const box = $('presets'); box.innerHTML = '';
+    const zero = {}; D.joints.filter(j => j.type !== 'fixed').forEach(j => { zero[j.name] = Math.min(Math.max(0, j.lower), j.upper); });
+    Object.entries(D.poses).concat([['Zero', zero]]).forEach(([name, values]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.addEventListener('click', () => setPose(values)); box.appendChild(b);
+    });
+  }
+  function buildTipSelect() {
+    const sel = $('tip'); const current = sel.value || D.tip;
+    sel.innerHTML = D.links.map(l => `<option${l === current ? ' selected' : ''}>${l}</option>`).join('');
+  }
+  $('tip').addEventListener('change', () => update());
+
+  function buildTree() {
+    const tree = $('tree'); tree.innerHTML = '';
+    const branch = (link) => {
+      const li = document.createElement('li'); const j = jointByChild[link];
+      li.dataset.name = link;
+      li.innerHTML = `<div class="node" data-link="${link}"><span>${link}</span>${j ? `<span class="jt${j.type !== 'fixed' ? ' mov' : ''}">${j.type}${j.mimic ? ' · mimic' : ''}</span>` : ''}</div>`;
+      const kids = byParent[link] || [];
+      if (kids.length) { const ul = document.createElement('ul'); kids.forEach(k => ul.appendChild(branch(k.child))); li.appendChild(ul); }
+      return li;
+    };
+    roots.forEach(r => tree.appendChild(branch(r)));
+    tree.querySelectorAll('.node').forEach(n => n.addEventListener('click', () => select(n.dataset.link)));
+    filterTree();
+  }
+  function filterTree() {
+    const f = $('link-search').value.trim().toLowerCase();
+    $('tree').querySelectorAll('li').forEach(li => { li.hidden = !(!f || li.dataset.name.toLowerCase().includes(f) || [...li.querySelectorAll('li')].some(c => c.dataset.name.toLowerCase().includes(f))); });
+  }
+  $('link-search').addEventListener('input', filterTree);
+
+  function buildStaticTables() {
+    const rows = staticShapes();
+    const sw = (l) => { const c = D.colors[l]; return `<span class="swatch" style="background:${c ? `rgb(${c.slice(0, 3).map(v => Math.round(v * 255)).join(',')})` : 'var(--static)'}"></span>`; };
+    const size = (g) => g.kind === 'box' ? g.size.map(v => v.toFixed(3)).join(' ') : g.kind === 'sphere' ? `r ${g.radius.toFixed(3)}` : `r ${g.radius.toFixed(3)} · l ${g.length.toFixed(3)}`;
+    if (!rows.length) { $('scene-table').innerHTML = '<tr><td>No static primitive shapes.</td></tr>'; $('extent-table').innerHTML = ''; return; }
+    $('scene-table').innerHTML = '<tr><th>Link</th><th>Shape</th><th>Size</th><th>Centre x y z</th></tr>' + rows.map(r =>
+      `<tr class="clickable" data-link="${r.g.link}"><td>${sw(r.g.link)}${r.g.link}</td><td>${r.g.kind}</td><td>${size(r.g)}</td><td>${[r.c.x, r.c.y, r.c.z].map(v => fmt(v)).join(' ')}</td></tr>`).join('');
+    $('extent-table').innerHTML = '<tr><th>Link</th><th>x min…max</th><th>y min…max</th><th>z min…max</th></tr>' + rows.map(r =>
+      `<tr class="clickable" data-link="${r.g.link}"><td>${sw(r.g.link)}${r.g.link}</td><td>${fmt(r.box.min.x)}…${fmt(r.box.max.x)}</td><td>${fmt(r.box.min.y)}…${fmt(r.box.max.y)}</td><td>${fmt(r.box.min.z)}…${fmt(r.box.max.z)}</td></tr>`).join('');
+    document.querySelectorAll('tr.clickable').forEach(r => r.addEventListener('click', () => select(r.dataset.link)));
+  }
+
+  let clearTimer = null, clearSeq = 0;
+  function requestClearance() {
+    clearTimeout(clearTimer);
+    clearTimer = setTimeout(async () => {
+      const seq = ++clearSeq;
+      const values = {}; D.joints.filter(j => j.type !== 'fixed').forEach(j => { values[j.name] = jointValue(j); });
+      try {
+        const rows = await (await fetch('/clearance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) })).json();
+        if (seq !== clearSeq) return;
+        $('clearance').innerHTML = rows.length ? rows.map(x => {
+          const cls = x.distance <= 0 ? 'hit' : x.distance < 0.05 ? 'near' : '';
+          const txt = x.distance <= 0 ? 'touching' : (x.distance * 100).toFixed(1) + ' cm';
+          return `<div data-link="${x.object}" title="${x.object} ↔ ${x.part}"><span>${x.object} <small>↔ ${x.part}</small></span><span class="${cls}">${txt}</span></div>`;
+        }).join('') : '<p class="note">No static shapes to measure against.</p>';
+        $('clearance').querySelectorAll('div').forEach(d => d.addEventListener('click', () => select(d.dataset.link)));
+      } catch (e) { /* the server is restarting; the next change retries */ }
+    }, 100);
+  }
+
+  function update(rebuilt) {
+    if (!D) return;
+    fk();
+    D.links.forEach(l => { linkObj[l].matrix.copy(world[l]); linkObj[l].matrixWorldNeedsUpdate = true; });
+    const tip = $('tip').value || D.tip;
+    if (world[tip]) {
+      tipAxes.matrix.copy(world[tip]); tipAxes.matrixWorldNeedsUpdate = true;
+      const p = new THREE.Vector3(), quat = new THREE.Quaternion();
+      world[tip].decompose(p, quat, new THREE.Vector3());
+      const e = new THREE.Euler().setFromQuaternion(quat, 'ZYX'); const deg = (r) => r * 180 / Math.PI;
+      $('tcp').innerHTML = `<dt>x · y · z</dt><dd>${fmt(p.x)} ${fmt(p.y)} ${fmt(p.z)} m</dd><dt>roll · pitch · yaw</dt><dd>${fmt(deg(e.x), 1)}° ${fmt(deg(e.y), 1)}° ${fmt(deg(e.z), 1)}°</dd><dt>quaternion x y z w</dt><dd>${[quat.x, quat.y, quat.z, quat.w].map(v => v.toFixed(4)).join(' ')}</dd>`;
+    }
+    if (rebuilt) buildStaticTables();
+    if (selected) showPick(selected);
+    requestClearance();
+  }
+
+  function fitView() {
+    const box = new THREE.Box3().setFromObject(modelRoot);
+    if (box.isEmpty()) return;
+    const size = box.getSize(new THREE.Vector3()).length(), centre = box.getCenter(new THREE.Vector3());
+    controls.target.copy(centre);
+    camera.position.copy(centre).add(new THREE.Vector3(1, -0.85, 0.65).normalize().multiplyScalar(size * 1.15));
+    camera.near = size / 500; camera.far = size * 20; camera.updateProjectionMatrix();
+    rootAxes.scale.setScalar(Math.max(size / 10, 0.05) / 0.15);
+    makeGrid(box);
+  }
+  $('fit').addEventListener('click', fitView);
+  function makeGrid(box) {
+    if (grid) scene.remove(grid);
+    const b = box || new THREE.Box3().setFromObject(modelRoot);
+    const span = Math.max(1, Math.ceil(b.getSize(new THREE.Vector3()).length() * 1.5));
+    grid = new THREE.GridHelper(span, span * 10, css('--grid'), css('--grid'));
+    grid.rotation.x = Math.PI / 2; grid.position.z = Math.min(0, b.min.z) - 0.001; scene.add(grid);
+  }
+  function applyTheme() { renderer.setClearColor(css('--view-bg')); pickables.forEach(m => m.material.color.set(colorFor(m.userData.link))); makeGrid(); }
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+
+  function applyToggles() {
+    Object.entries(linkObj).forEach(([l, o]) => { o.visible = $(moving.has(l) ? 't-moving' : 't-static').checked; });
+    frames.visible = $('t-frames').checked;
+  }
+  ['t-moving', 't-static', 't-frames'].forEach(id => $(id).addEventListener('change', applyToggles));
+
+  function showPick(link) {
+    if (!world[link]) return;
+    const p = new THREE.Vector3().setFromMatrixPosition(world[link]); const j = jointByChild[link];
+    $('pick').innerHTML = `<b>${link}</b> · ${moving.has(link) ? 'moving' : 'static'} · ${j ? `${j.type} joint ${j.name} from ${j.parent}` : 'root link'}<br>origin ${fmt(p.x)} ${fmt(p.y)} ${fmt(p.z)} m`;
+    pickAxes.matrix.copy(world[link]); pickAxes.matrixWorldNeedsUpdate = true;
+  }
+  function select(link) {
+    selected = link || null;
+    pickables.forEach(m => { m.material.emissive.set(m.userData.link === selected ? css('--accent') : '#000000'); m.material.emissiveIntensity = 0.45; });
+    document.querySelectorAll('.tree .node').forEach(n => n.classList.toggle('on', n.dataset.link === selected));
+    document.querySelectorAll('tr.clickable').forEach(r => r.classList.toggle('on', r.dataset.link === selected));
+    pickAxes.visible = !!selected;
+    if (selected) showPick(selected); else $('pick').textContent = 'Click a part to inspect it';
+  }
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let down = null;
+  renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(pickables.filter(m => m.parent.visible), false)[0];
+    select(hit ? hit.object.userData.link : null);
+  });
+
+  const labelEls = {};
+  function placeLabels() {
+    if (!D) return;
+    const show = $('t-labels').checked, w = host.clientWidth, h = host.clientHeight;
+    const items = [];
+    const tip = $('tip').value;
+    if (world[tip]) items.push([tip, new THREE.Vector3().setFromMatrixPosition(world[tip])]);
+    if ($('t-static').checked) staticShapes().forEach(r => items.push([r.g.link, new THREE.Vector3(r.c.x, r.c.y, r.box.max.z)]));
+    const seen = new Set();
+    items.forEach(([name, pos]) => {
+      if (seen.has(name)) return; seen.add(name);
+      let el = labelEls[name];
+      if (!el) { el = labelEls[name] = document.createElement('span'); el.className = 'tag'; el.textContent = name; $('labels').appendChild(el); }
+      const p = pos.clone().project(camera);
+      const vis = show && p.z < 1 && Math.abs(p.x) < 1.05 && Math.abs(p.y) < 1.05;
+      el.hidden = !vis;
+      if (vis) { el.style.left = ((p.x + 1) / 2 * w) + 'px'; el.style.top = ((1 - p.y) / 2 * h) + 'px'; }
+    });
+    Object.keys(labelEls).forEach(n => { if (!seen.has(n)) { labelEls[n].remove(); delete labelEls[n]; } });
+  }
+
+  ['pose', 'scene', 'links'].forEach(t => $('tab-' + t).addEventListener('click', () => {
+    ['pose', 'scene', 'links'].forEach(o => { $('tab-' + o).setAttribute('aria-selected', o === t); $('pane-' + o).hidden = o !== t; });
+  }));
+
+  let version = -1;
+  async function poll() {
+    try {
+      const v = await (await fetch('/version')).json();
+      if (v.version !== version) {
+        version = v.version;
+        $('banner').hidden = !v.error;
+        $('banner').textContent = v.error ? 'The last save did not build, so the view still shows the previous model.\n' + v.error : '';
+        if (!v.error || !D) { const data = await (await fetch('/model.json')).json(); if (data.links) build(data); }
+        $('status').classList.toggle('error', !!v.error);
+        $('status-text').textContent = v.error ? 'build error' : `live · built ${v.updated}`;
+        $('status').classList.add('flash'); setTimeout(() => $('status').classList.remove('flash'), 600);
+      } else if ($('status').classList.contains('error') && !$('banner').textContent) {
+        $('status').classList.remove('error'); $('status-text').textContent = `live · built ${v.updated}`;
+      }
+    } catch (e) {
+      $('status').classList.add('error'); $('status-text').textContent = 'viewer server not reachable';
+    }
+    setTimeout(poll, 1000);
+  }
+
+  function resize() { const w = host.clientWidth, h = host.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  new ResizeObserver(resize).observe(host); resize();
+  poll();
+  (function loop() { controls.update(); renderer.render(scene, camera); placeLabels(); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

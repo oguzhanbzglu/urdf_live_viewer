@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "urdf-live-viewer"
+version = "0.1.0"
+description = "View a URDF or xacro robot description in the browser and redraw it every time a file is saved."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Oguzhan Bozoglu", email = "oguzhan.bozoglu@b-robotized.com" }]
+requires-python = ">=3.9"
+keywords = ["urdf", "xacro", "robotics", "ros", "visualization", "collision"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+  "numpy",
+  "pin>=2.7",
+  "xacro",
+]
+
+[project.urls]
+Homepage = "https://github.com/oguzhanbzglu/urdf_live_viewer"
+Issues = "https://github.com/oguzhanbzglu/urdf_live_viewer/issues"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+urdf-live-viewer = "urdf_live_viewer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+urdf_live_viewer = ["web/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

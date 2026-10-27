@@ -1,0 +1,108 @@
+<?xml version="1.0"?>
+<!-- A three-joint arm with a two-finger gripper on a table, next to a box and a wall.
+     Only primitive shapes, so it runs without any ROS package. Edit a size and save. -->
+<robot name="demo_cell" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="obstacle" default="true"/>
+  <xacro:property name="upper_arm" value="0.35"/>
+  <xacro:property name="forearm" value="0.30"/>
+
+  <material name="arm"><color rgba="0.85 0.86 0.88 1"/></material>
+  <material name="joint"><color rgba="0.25 0.28 0.30 1"/></material>
+  <material name="table"><color rgba="0.70 0.53 0.32 1"/></material>
+  <material name="obstacle"><color rgba="0.20 0.45 0.70 1"/></material>
+  <material name="wall"><color rgba="0.80 0.20 0.20 0.3"/></material>
+
+  <xacro:macro name="solid" params="name *geometry material">
+    <link name="${name}">
+      <visual><xacro:insert_block name="geometry"/><material name="${material}"/></visual>
+      <collision><xacro:insert_block name="geometry"/></collision>
+    </link>
+  </xacro:macro>
+
+  <link name="world"/>
+
+  <xacro:solid name="table" material="table">
+    <geometry><box size="1.2 0.8 0.05"/></geometry>
+  </xacro:solid>
+  <joint name="table_joint" type="fixed">
+    <parent link="world"/><child link="table"/><origin xyz="0.3 0 -0.025"/>
+  </joint>
+
+  <xacro:if value="$(arg obstacle)">
+    <xacro:solid name="obstacle" material="obstacle">
+      <geometry><box size="0.15 0.15 0.25"/></geometry>
+    </xacro:solid>
+    <joint name="obstacle_joint" type="fixed">
+      <parent link="world"/><child link="obstacle"/><origin xyz="0.45 0.25 0.125"/>
+    </joint>
+  </xacro:if>
+
+  <xacro:solid name="back_wall" material="wall">
+    <geometry><box size="0.02 0.8 0.8"/></geometry>
+  </xacro:solid>
+  <joint name="back_wall_joint" type="fixed">
+    <parent link="world"/><child link="back_wall"/><origin xyz="-0.31 0 0.4"/>
+  </joint>
+
+  <link name="base">
+    <visual><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.08" length="0.1"/></geometry><material name="joint"/></visual>
+    <collision><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.08" length="0.1"/></geometry></collision>
+  </link>
+  <joint name="base_joint" type="fixed">
+    <parent link="world"/><child link="base"/>
+  </joint>
+
+  <link name="shoulder">
+    <visual><origin xyz="0 0 0.08"/><geometry><cylinder radius="0.06" length="0.16"/></geometry><material name="arm"/></visual>
+    <collision><origin xyz="0 0 0.08"/><geometry><cylinder radius="0.06" length="0.16"/></geometry></collision>
+  </link>
+  <joint name="pan" type="revolute">
+    <parent link="base"/><child link="shoulder"/><origin xyz="0 0 0.1"/>
+    <axis xyz="0 0 1"/><limit lower="-2.9" upper="2.9" effort="10" velocity="1"/>
+  </joint>
+
+  <link name="upper_arm">
+    <visual><origin xyz="${upper_arm / 2} 0 0" rpy="0 ${pi / 2} 0"/><geometry><cylinder radius="0.04" length="${upper_arm}"/></geometry><material name="arm"/></visual>
+    <collision><origin xyz="${upper_arm / 2} 0 0" rpy="0 ${pi / 2} 0"/><geometry><cylinder radius="0.04" length="${upper_arm}"/></geometry></collision>
+  </link>
+  <joint name="shoulder_lift" type="revolute">
+    <parent link="shoulder"/><child link="upper_arm"/><origin xyz="0 0 0.16" rpy="0 -1.2 0"/>
+    <axis xyz="0 1 0"/><limit lower="-1.5" upper="1.5" effort="10" velocity="1"/>
+  </joint>
+
+  <link name="forearm">
+    <visual><origin xyz="${forearm / 2} 0 0" rpy="0 ${pi / 2} 0"/><geometry><cylinder radius="0.035" length="${forearm}"/></geometry><material name="arm"/></visual>
+    <collision><origin xyz="${forearm / 2} 0 0" rpy="0 ${pi / 2} 0"/><geometry><cylinder radius="0.035" length="${forearm}"/></geometry></collision>
+  </link>
+  <joint name="elbow" type="revolute">
+    <parent link="upper_arm"/><child link="forearm"/><origin xyz="${upper_arm} 0 0" rpy="0 1.6 0"/>
+    <axis xyz="0 1 0"/><limit lower="-2.4" upper="2.4" effort="10" velocity="1"/>
+  </joint>
+
+  <link name="hand">
+    <visual><geometry><box size="0.04 0.12 0.05"/></geometry><material name="joint"/></visual>
+    <collision><geometry><box size="0.04 0.12 0.05"/></geometry></collision>
+  </link>
+  <joint name="wrist" type="fixed">
+    <parent link="forearm"/><child link="hand"/><origin xyz="${forearm + 0.02} 0 0"/>
+  </joint>
+
+  <xacro:macro name="finger" params="side sign">
+    <link name="finger_${side}">
+      <visual><origin xyz="0.035 0 0"/><geometry><box size="0.07 0.012 0.03"/></geometry><material name="joint"/></visual>
+      <collision><origin xyz="0.035 0 0"/><geometry><box size="0.07 0.012 0.03"/></geometry></collision>
+    </link>
+    <joint name="finger_${side}_joint" type="prismatic">
+      <parent link="hand"/><child link="finger_${side}"/><origin xyz="0.02 ${sign * 0.012} 0"/>
+      <axis xyz="0 ${sign} 0"/><limit lower="0" upper="0.04" effort="10" velocity="0.1"/>
+      <xacro:if value="${side == 'right'}"><mimic joint="finger_left_joint"/></xacro:if>
+    </joint>
+  </xacro:macro>
+  <xacro:finger side="left" sign="1"/>
+  <xacro:finger side="right" sign="-1"/>
+
+  <link name="tool_tip"/>
+  <joint name="tool_tip_joint" type="fixed">
+    <parent link="hand"/><child link="tool_tip"/><origin xyz="0.09 0 0"/>
+  </joint>
+</robot>

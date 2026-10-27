@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot name="demo_cell">
+  <group name="arm">
+    <chain base_link="base" tip_link="tool_tip"/>
+  </group>
+  <group_state name="home" group="arm">
+    <joint name="pan" value="0"/>
+    <joint name="shoulder_lift" value="0"/>
+    <joint name="elbow" value="0"/>
+  </group_state>
+  <group_state name="over_obstacle" group="arm">
+    <joint name="pan" value="0.55"/>
+    <joint name="shoulder_lift" value="0.35"/>
+    <joint name="elbow" value="-0.6"/>
+  </group_state>
+  <group_state name="reach_back" group="arm">
+    <joint name="pan" value="2.6"/>
+    <joint name="shoulder_lift" value="0.5"/>
+    <joint name="elbow" value="0.4"/>
+  </group_state>
+  <disable_collisions link1="base" link2="table" reason="Adjacent"/>
+  <disable_collisions link1="shoulder" link2="table" reason="Never"/>
+  <disable_collisions link1="finger_left" link2="finger_right" reason="Never"/>
+</robot>
